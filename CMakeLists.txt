@@ -11,17 +11,24 @@ endif()
 project(MAFUinput)
 include("${DOLCESDK}/share/dolce.cmake" REQUIRED)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wl,-q -Wall -O3 -nostdlib")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti -fno-exceptions")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wl,-q -Wall -O3 -nostdlib -Wno-unknown-pragmas")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti -fno-exceptions -Wno-unknown-pragmas")
 
 include_directories(
 )
 
+file(GLOB_RECURSE ogl_src
+	"./src/*.c"
+)
+
 add_executable(${PROJECT_NAME}
-  main.c
+	${ogl_src}
 )
 
 target_link_libraries( ${PROJECT_NAME}
+  SceDisplayForDriver_stub
+  SceProcessmgrForDriver_stub 
+  SceTouchForDriver_stub
   SceCtrlForDriver_stub
   SceDebugForDriver_stub
   SceSysmemForDriver_stub 
@@ -29,6 +36,7 @@ target_link_libraries( ${PROJECT_NAME}
   SceIofilemgrForDriver_stub
   SceThreadmgrForDriver_stub 
   taihenForKernel_stub
+  taihenModuleUtils_stub
 )
 
 dolce_create_self(${PROJECT_NAME}.skprx ${PROJECT_NAME} CONFIG exports.yml)
