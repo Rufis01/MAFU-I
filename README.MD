@@ -31,5 +31,5 @@ ur0:tai/MAFUinput.skprx
 3. Reboot your PSVita.
 
 ## Build
-- Install [DolceSDK](https://github.com/DolceSDK/ddpm)
+- Install [VitaSDK](https://github.com/VitaSDK/ddpm)
 - Run `cmake . && make`
