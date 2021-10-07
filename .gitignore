@@ -1,9 +1,11 @@
 .vscode/
+.vs/
 CMakeCache.txt
 CMakeFiles/
 MAFU-I trailer.mp4
 MAFUinput
 MAFUinput.skprx
+MAFUinput.skprx.out
 MAFUinput.velf
 Makefile
 cmake_install.cmake
