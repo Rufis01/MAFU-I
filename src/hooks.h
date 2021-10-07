@@ -19,6 +19,7 @@ enum hookId
 	sceTouchPeek2_id,
 	sceTouchRead_id,
 	sceTouchRead2_id,
+	sceTouchPeekRegion_id,
 	NUM_HOOKS
 };
 
@@ -37,6 +38,15 @@ int h_##name(int port, SceCtrlData* pad_data, int count)\
 int h_##name(SceUInt32 port, SceTouchData *pData, SceUInt32 nBufs)\
 {\
 	int ret = TAI_CONTINUE(int,hookRefs[name##_id], port, pData, nBufs);\
+	SceTouchData* buffer = (port == SCE_TOUCH_PORT_FRONT ? &inputState.frontTouchData : &inputState.backTouchData);\
+	mergeTouchData(pData, buffer, port);\
+	return ret;\
+}
+
+#define TOUCH_REGION_HOOK(hookRefs, name, inputState)\
+int h_##name(SceUInt32 port, SceTouchData *pData, SceUInt32 nBufs, int region)\
+{\
+	int ret = TAI_CONTINUE(int,hookRefs[name##_id], port, pData, nBufs, region);\
 	SceTouchData* buffer = (port == SCE_TOUCH_PORT_FRONT ? &inputState.frontTouchData : &inputState.backTouchData);\
 	mergeTouchData(pData, buffer, port);\
 	return ret;\

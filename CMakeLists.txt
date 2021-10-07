@@ -1,31 +1,33 @@
 cmake_minimum_required(VERSION 2.8)
 
 if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
-  if(DEFINED ENV{DOLCESDK})
-    set(CMAKE_TOOLCHAIN_FILE "$ENV{DOLCESDK}/share/dolce.toolchain.cmake" CACHE PATH "toolchain file")
+  if(DEFINED ENV{VITASDK})
+    set(CMAKE_TOOLCHAIN_FILE "$ENV{VITASDK}/share/vita.toolchain.cmake" CACHE PATH "toolchain file")
   else()
-    message(FATAL_ERROR "Please define DOLCESDK to point to your SDK path!")
+    message(FATAL_ERROR "Please define VITASDK to point to your SDK path!")
   endif()
 endif()
 
 project(MAFUinput)
-include("${DOLCESDK}/share/dolce.cmake" REQUIRED)
+include("${VITASDK}/share/vita.cmake" REQUIRED)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wl,-q -Wall -O3 -nostdlib -Wno-unknown-pragmas")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wl,-q -Wall -nostdlib -Wno-unknown-pragmas")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti -fno-exceptions -Wno-unknown-pragmas")
 
 include_directories(
 )
 
-file(GLOB_RECURSE ogl_src
+file(GLOB_RECURSE mafu_src
 	"./src/*.c"
 )
 
 add_executable(${PROJECT_NAME}
-	${ogl_src}
+	${mafu_src}
 )
 
 target_link_libraries( ${PROJECT_NAME}
+  SceKernelSuspendForDriver_stub
+  ScePowerForDriver_stub 
   SceDisplayForDriver_stub
   SceProcessmgrForDriver_stub 
   SceTouchForDriver_stub
@@ -39,7 +41,7 @@ target_link_libraries( ${PROJECT_NAME}
   taihenModuleUtils_stub
 )
 
-dolce_create_self(${PROJECT_NAME}.skprx ${PROJECT_NAME} CONFIG exports.yml)
+vita_create_self(${PROJECT_NAME}.skprx ${PROJECT_NAME} CONFIG exports.yml)
 
 add_custom_target(copy
   COMMAND curl -T ${PROJECT_NAME}.skprx ftp://192.168.1.3:1337/ur0:/tai/${PROJECT_NAME}.skprx

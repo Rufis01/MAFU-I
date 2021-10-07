@@ -26,9 +26,9 @@ Author: Rufis_
 Description:
 A plugin to record your inputs and play them back.
 
-TODO: add header to capture file to store info (size?) and flags like MAFU_CAPTURE_DIGITAL, MAFU_CAPTURE_ANALOG, etc...
-
 */
+
+//Dejavu's PayloadArguments pargs is at offset 0xb04c of segment 1
 
 #include <psp2/touch.h>
 #include <psp2kern/ctrl.h>
@@ -39,7 +39,9 @@ TODO: add header to capture file to store info (size?) and flags like MAFU_CAPTU
 #include <psp2kern/kernel/threadmgr.h>
 #include <psp2kern/kernel/cpu.h>
 
-#include <taihen.h>
+#include <taihen/taihen.h>
+#include <taihen/patches.h>
+#include <taihen/module.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -55,16 +57,21 @@ TODO: add header to capture file to store info (size?) and flags like MAFU_CAPTU
 #define printf(...) ksceDebugPrintf("[MAFU-I] " __VA_ARGS__)
 
 int shellPid = 0;
+SceUInt64 ssfileElapsedTime = 0;
+SceOff ssfileOffset = 0;
 SceBool isRecording = 0;
 SceBool isPlaying = 0;
+SceUID playbackThreadId = 0;
+SceUID captureThreadId = 0;
 Timers timers = {0};
 Settings settings = {0};
 InputState inputState = {0};
 
+SceUID mainThreadId = 0;
+
 SceUID touchPatchID = 0;
 tai_hook_ref_t hookRefs[NUM_HOOKS];
 SceUID patchRefs[NUM_HOOKS];
-
 
 int h_vshKernelSendSysEvent(int a1);
 int h_ksceDisplaySetFrameBufInternal(int head, int index, const SceDisplayFrameBuf *pParam, int sync);
@@ -83,6 +90,8 @@ TOUCH_HOOK(hookRefs, sceTouchPeek2, inputState)
 TOUCH_HOOK(hookRefs, sceTouchRead, inputState)
 TOUCH_HOOK(hookRefs, sceTouchRead2, inputState)
 
+TOUCH_REGION_HOOK(hookRefs, sceTouchPeekRegion, inputState)
+
 void initHooks()
 {
 	REGISTER_HOOK(patchRefs, hookRefs, "SceCtrl", 0xD197E3C7, 0xA9C3CED6, sceCtrlPeekBufferPositive);
@@ -100,6 +109,9 @@ void initHooks()
 	REGISTER_HOOK(patchRefs, hookRefs, "SceTouch", 0x3E4F4A81, 0x169A1D58, sceTouchRead);
 	REGISTER_HOOK(patchRefs, hookRefs, "SceTouch", 0x3E4F4A81, 0x39401BEA, sceTouchRead2);
 
+	//REGISTER_HOOK(patchRefs, hookRefs, "SceTouch", 0x3E4F4A81, 0x04440622, sceTouchPeekRegion);
+	//REGISTER_HOOK(patchRefs, hookRefs, "SceTouch", 0x3E4F4A81, 0x2CF6D7E2, sceTouchPeekRegionExt);
+
 	REGISTER_HOOK(patchRefs, hookRefs, "SceDisplay", 0x9FED47AC, 0x16466675, ksceDisplaySetFrameBufInternal);
 
 	REGISTER_HOOK(patchRefs, hookRefs, "SceVshBridge", 0x35C5ACD4, 0x71D9DB5C, vshKernelSendSysEvent);
@@ -109,6 +121,9 @@ void loadSettings()
 {	
 	settings.recordKeycombo = (SCE_CTRL_LEFT | SCE_CTRL_CIRCLE | SCE_CTRL_RTRIGGER);
 	settings.playKeycombo = (SCE_CTRL_RIGHT | SCE_CTRL_CIRCLE | SCE_CTRL_RTRIGGER);
+	settings.savestateKeycombo = (SCE_CTRL_LEFT | SCE_CTRL_TRIANGLE | SCE_CTRL_RTRIGGER);
+	settings.loadstateKeycombo = (SCE_CTRL_RIGHT | SCE_CTRL_TRIANGLE | SCE_CTRL_RTRIGGER);
+	settings.analogThreshold = 5;
 }
 
 void _start() __attribute__ ((weak, alias ("module_start")));
@@ -125,17 +140,21 @@ int module_start(SceSize argc, const void *args)
 	printf("Started!\n");
 
 	ksceIoMkdir("ur0:/data/MAFU-I", 0777);
+	ksceIoMkdir("ux0:/data/MAFU-I", 0777);
 
 	initHooks();
+	/*for(int i=0; i<NUM_HOOKS; i++)
+	{
+		printf("%d\n", patchRefs[i]);
+	}*/
 	loadSettings();
 
 	//Patch for touch in kernel
-	tai_module_info_t modinfo;
+	tai_module_info_t modinfo = {0};
 	modinfo.size = sizeof(tai_module_info_t);
 	module_get_by_name_nid(KERNEL_PID, "SceTouch", TAI_IGNORE_MODULE_NID, &modinfo);
 	touchPatchID = taiInjectDataForKernel(KERNEL_PID, modinfo.modid, 0, 0x32CE, "\x00\xbf\x00\xbf", 4);
 
-	SceUID mainThreadId;
 	mainThreadId = ksceKernelCreateThread("MAFU-I_mainThread", mainThreadLogic, 0x3C, 0x3000, 0, 0x10000, 0);
 
 	ksceKernelStartThread(mainThreadId, 0, 0);
@@ -154,7 +173,6 @@ int h_vshKernelSendSysEvent(int a1)
 {
 	int ret = TAI_CONTINUE(int, hookRefs[vshKernelSendSysEvent_id], a1);
 	shellPid = ksceKernelGetProcessId();
-	printf("KernelPid: %d\nShellPid: %d\n", KERNEL_PID, shellPid);
 	return ret;
 }
 

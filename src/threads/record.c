@@ -14,24 +14,55 @@ SceBool writePacket(CaptureInfo *header, void* data);
 
 SceUID captureFile = 0;
 
+//TODO: nothing???
+
+void resetAnalog(InputState *inputstate)
+{
+	inputstate->controlData.lx = inputstate->controlData.ly = inputstate->controlData.rx = inputstate->controlData.ry = 127;
+}
+
 int captureThreadLogic(SceSize args, void *argp)
 {
 	printf("Started capture thread\n");
 	
-	InputState oldInputState = {0};
-	InputState newInputState = {0};
+	InputState oldInputState = {0}; resetAnalog(&oldInputState);
+	InputState newInputState = {0}; resetAnalog(&newInputState);
 	SceUInt64 captureStart;
 	SceUInt64 currentTime;
 	
-	captureFile = ksceIoOpen("ur0:/data/MAFU-I/capture.dat", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0777);
+	if(ssfileOffset == 0)
+	{
+		captureFile = ksceIoOpen("ur0:/data/MAFU-I/capture.dat", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0777);
+		printf("No offset!\n");
+	}
+	else
+	{
+		printf("Offset: %lld\n", ssfileOffset);
+		char byte = 0;
+
+		printf("Rename: %#.8x\n", ksceIoRename("ur0:/data/MAFU-I/capture.dat", "ur0:/data/MAFU-I/capture.old"));
+		captureFile = ksceIoOpen("ur0:/data/MAFU-I/capture.dat", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0777);
+		SceUID oldFile = ksceIoOpen("ur0:/data/MAFU-I/capture.old", SCE_O_RDONLY, 0777);
+		
+		for(int i = 0; i < ssfileOffset; i++)
+		{
+			ksceIoRead(oldFile, &byte, 1);
+			ksceIoWrite(captureFile, &byte, 1);
+		}
+
+		ksceIoClose(oldFile);
+		ksceIoRemove("ur0:/data/MAFU-I/capture.old");
+	}
+
 	if(captureFile < 0)
 	{
-		printf("Error opening capture file for writing!\n");
+		printf("Error opening capture file for writing! %#.8x\n", captureFile);
+		isRecording = 0;
 		return -1;
 	}
 
 	//Reset timers
-	captureStart = timers.digitalTick = timers.analogTick = timers.frontTouchTick = timers.backTouchTick = timers.accelTick = timers.gyroTick = ksceKernelGetSystemTimeWide();
+	captureStart = timers.digitalTick = timers.analogTick = timers.frontTouchTick = timers.backTouchTick = timers.accelTick = timers.gyroTick = ksceKernelGetSystemTimeWide() - ssfileElapsedTime;
 	oldInputState.controlData.buttons = settings.recordKeycombo;
 	
 	//TODO: restore sampling states?
@@ -71,6 +102,12 @@ int captureThreadLogic(SceSize args, void *argp)
 		ksceKernelDelayThread(1000);
 	}
 	//Clean up and return
+	ssfileOffset = ksceIoLseek(captureFile, 0, SCE_SEEK_CUR);
+	ssfileElapsedTime = currentTime - captureStart;
+
+	/*printf("Last offset: %lld\n", ssfileOffset);
+	printf("Elapsed time: %lld\n", ssfileElapsedTime);*/
+
 	ksceIoClose(captureFile);
 	printf("Capture stopped\n");
 	return 0;
@@ -81,7 +118,7 @@ void chkDigital(InputState *newInputState, InputState *oldInputState, SceUInt64 
 	ksceCtrlPeekBufferPositive(0, &newInputState->controlData, 1);             	//Peek digital buff
 
 	if(newInputState->controlData.buttons != oldInputState->controlData.buttons)  //If buttons changed, record them with the timestamp.
-	{                                                                           //TODO: look into the time in ScePadData struct
+	{                                                                           //TODO: look into the time in ScePadData struct maybe?
 		CaptureInfo header = {0};
 		header.type = INPUT_DIGITAL;
 		header.captureTime = currentTime - captureStart;
@@ -165,8 +202,9 @@ SceBool cmpTouch(SceTouchData *d1, SceTouchData *d2)
 
 SceBool writePacket(CaptureInfo *header, void* data)
 {
-
-	ksceIoWrite(captureFile, header, sizeof(CaptureInfo));			//TODO: Check for errors
+	//printf("Recording input of type %d,scheduled for %llu.\n", header->type, header->captureTime);
+			
+	ksceIoWrite(captureFile, header, sizeof(CaptureInfo));
 	ksceIoWrite(captureFile, data, header->dataSize);
 
 	return 1;
